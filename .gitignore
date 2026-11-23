@@ -1,8 +1,4 @@
-**/target/
-.tools/
-.m2/
-.env
-data/
-*.log
 .idea/
+.vscode/
 *.iml
+.DS_Store

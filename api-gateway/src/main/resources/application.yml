@@ -1,33 +1,37 @@
 server:
-  port: ${SERVER_PORT:8080}
+  port: 8090
+
 spring:
   application:
     name: api-gateway
-  http:
-    codecs:
-      max-in-memory-size: 64KB
   cloud:
     gateway:
       server:
         webflux:
+          discovery:
+            locator:
+              enabled: false
           routes:
-            - id: usuarios
-              uri: ${USUARIOS_URI:lb://ms-usuarios}
+            - id: ms-usuarios
+              uri: lb://ms-usuarios
               predicates:
-                - Path=/api/v1/auth/**,/api/v1/usuarios/**
-            - id: usuarios-swagger
-              uri: ${USUARIOS_URI:lb://ms-usuarios}
+                - Path=/usuarios/**
+            - id: ms-instalaciones
+              uri: lb://ms-instalaciones
               predicates:
-                - Path=/swagger-ui/**,/swagger-ui.html,/v3/api-docs/**
+                - Path=/regiones/**,/comunas/**,/instalaciones/**,/tipos-equipo/**,/equipos/**
+            - id: ms-instrumentos
+              uri: lb://ms-instrumentos
+              predicates:
+                - Path=/instrumentos/**
+            - id: ms-protocolo
+              uri: lb://ms-protocolo
+              predicates:
+                - Path=/visitas/**,/protocolos/**,/tipos-prueba/**,/evidencias/**
+
 eureka:
-  instance:
-    prefer-ip-address: true
   client:
-    enabled: ${EUREKA_ENABLED:true}
     service-url:
       defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info
+  instance:
+    prefer-ip-address: true

@@ -1,178 +1,500 @@
-# Contrato HTTP de usuarios y autenticación v1
+# API de Induztek Protocolos
 
-Base de desarrollo: `http://localhost:8080/api/v1` vía gateway o `http://localhost:8081/api/v1` directo. JSON UTF-8 y `Content-Type: application/json`. Fechas ISO 8601 UTC. Los IDs son enteros de 64 bits; Android debe preferir `Long`. Swagger interactivo: `/swagger-ui/index.html`; especificación: `/v3/api-docs`.
+Todas las llamadas de la app pasan por el **API Gateway** (puerto 8090). Base URL:
 
-## Endpoints
+- Emulador sin túnel: `http://10.0.2.2:8090/`
+- Con túnel de VS Code: `https://<tu-tunel>-8090.<region>.devtunnels.ms/`
 
-| Método y ruta relativa a `/api/v1` | Acceso | Éxito | Errores propios |
-|---|---|---|---|
-| `POST /auth/registro` | Público | `201` cuenta pendiente y Location | `400` campos/JSON; `409` duplicado; `429` límite |
-| `POST /auth/login` | Público | `200` token y usuario | `400` formato; `401` credenciales; `403` cuenta no habilitada; `429` límite |
-| `POST /auth/recuperacion/solicitar` | Público | `202` mensaje genérico | `400` formato; `429` límite; `503` SMTP |
-| `POST /auth/recuperacion/restablecer` | Público | `204` sin cuerpo | `400` validación/código; `429` límite |
-| `POST /auth/logout` | Bearer | `204` sin cuerpo | `401` token |
-| `GET /usuarios/me` | Bearer | `200` perfil propio | `401` token |
-| `GET /usuarios?pagina=0&tamano=20` | ADMIN | `200` página | `400` paginación |
-| `GET /usuarios/{id}` | ADMIN | `200` usuario | `400` ID; `404` ausente |
-| `PATCH /usuarios/{id}/rol` | ADMIN | `200` usuario actualizado | `400` rol; `404` ausente; `409` último ADMIN |
-| `PATCH /usuarios/{id}/activo` | ADMIN | `200` usuario actualizado | `400` JSON; `404` ausente; `409` rol requerido/último ADMIN |
+Los JSON usan `camelCase`. Las fechas van en ISO: `2026-11-24` y `2026-11-24T10:30:00`.
 
-Todas las rutas privadas pueden devolver `401` sin sesión o `403` sin permiso. Operaciones con BD pueden devolver `503` por indisponibilidad, o `500` por un fallo inesperado. Un JSON mal formado, campos desconocidos o enum inválido producen `400`; métodos no permitidos, `405`; tipo de contenido incorrecto, `415`. Un token inválido enviado incluso a una ruta pública produce `401`: omitir Authorization en registro/login/recuperación. Eureka sin instancias disponibles produce `503` desde gateway, cuyo cuerpo de error puede tener el formato de Spring Cloud; el cliente debe tratar ese código como indisponibilidad.
+## Reglas comunes
 
-## Registro compatible con Android
-
-`RegistroUsuarioRepository.kt` define `SolicitudRegistroUsuario` con estos seis campos; `RegistroViewModel.kt` ya normaliza RUT, teléfono y nombre y espera `ResultadoRegistroUsuario.Creado(correoInterno)`.
-
-```json
-{
-  "nombre": "Ana Pérez Soto",
-  "rut": "123456785",
-  "telefono": "+56 9 1234 5678",
-  "correoPersonal": "ana@example.org",
-  "preguntaSeguridad": "¿Cuál es el nombre de tu primera mascota?",
-  "respuestaSeguridad": "Luna"
-}
-```
-
-Respuesta `201 Created` y `Location: /api/v1/usuarios/42`:
-
-```json
-{
-  "id": 42,
-  "correoInterno": "aperez.12345678@induztek.ejemplo",
-  "estado": "PENDIENTE_ASIGNACION_ROL"
-}
-```
-
-La lectura de Location requiere ADMIN; el usuario público obtiene solo esta confirmación. El correo es un identificador de login, no un buzón provisionado. El sufijo deriva del RUT para evitar colisiones. El dominio se configura con `INTERNAL_EMAIL_DOMAIN`. La sugerencia visual de Android no es el valor definitivo. Guardar siempre el `correoInterno` respondido.
-
-No agregar `rolCodigo`, `activo`, contraseña ni hash al cuerpo de registro. Se rechazan como campos desconocidos. La cuenta no puede iniciar sesión hasta que un ADMIN asigne rol y su titular establezca contraseña mediante código.
-
-### Validaciones
-
-| Campo | Regla |
+| Código | Cuándo |
 |---|---|
-| nombre | Obligatorio, hasta 150 caracteres, al menos nombre y apellido; letras, espacios, apóstrofe o guion |
-| rut | Obligatorio, hasta 15 caracteres de entrada; se quitan puntos y guion; cuerpo de 7–8 dígitos y DV módulo 11; único |
-| telefono | Celular chileno `9XXXXXXXX`, admite `+56 9 XXXX XXXX`; se guarda formateado |
-| correoPersonal | Obligatorio, email válido de hasta 254 caracteres; se guarda en minúsculas, único |
-| preguntaSeguridad | Una de las cinco preguntas exactas de Android |
-| respuestaSeguridad | No vacía, hasta 128 caracteres; se normalizan espacios/mayúsculas para verificar, se guarda solo hash con sal |
-| nuevaContrasena | Entre 12 y 128 caracteres, no vacía; confirmación idéntica; no se recorta ni convierte a minúsculas |
+| 200 | Consulta o actualización correcta |
+| 201 | Recurso creado |
+| 202 | Solicitud aceptada (envío de código) |
+| 204 | Acción sin cuerpo, o **lista vacía** |
+| 400 | Datos inválidos (ver `campos`) |
+| 401 | Correo o contraseña incorrectos |
+| 403 | Sin permiso o cuenta sin perfil |
+| 404 | No existe el recurso o la ruta |
+| 405 | Método HTTP no permitido en esa ruta |
+| 409 | Duplicado (RUT, correo, TAG, número de serie) |
+| 429 | Demasiados intentos: esperar 15 minutos |
+| 503 | Otro microservicio no responde |
 
-Preguntas aceptadas:
+En Retrofit, toda función que devuelve una lista debe ser nulable, porque una respuesta 204 llega como `null`:
 
-1. ¿Cuál es el nombre de tu primera mascota?
-2. ¿En qué ciudad nacieron tus padres?
-3. ¿Cuál es tu comida favorita?
-4. ¿Cuál fue el modelo de tu primer auto?
-5. ¿Cuál es el nombre de tu mejor amigo de la infancia?
-
-## Administración
-
-Iniciar sesión con el ADMIN inicial definido en variables de entorno y enviar su Bearer:
-
-```http
-PATCH /api/v1/usuarios/42/rol
-Authorization: Bearer TOKEN_ADMIN
-Content-Type: application/json
-
-{"rolCodigo":"TECNICO"}
+```kotlin
+@GET("instrumentos")
+suspend fun listar(): List<InstrumentoDto>?
 ```
 
-Roles: `ADMIN`, `TECNICO`, `INGENIERO`, `JEFE_TECNICO`, `CLIENTE`. Asignar rol habilita la cuenta y revoca sus sesiones y códigos previos. Solo ADMIN puede asignar roles; JEFE_TECNICO no implica ADMIN. `PATCH /usuarios/42/activo` recibe `{"activo":false}` o `{"activo":true}`. Activar requiere rol. No se permite eliminar al último administrador activo.
+y en el repositorio: `api.listar() ?: emptyList()`.
 
-Un usuario público tiene esta forma:
+### Formato de error
 
 ```json
 {
-  "id": 42,
-  "nombre": "Ana Pérez Soto",
-  "rut": "123456785",
-  "telefono": "+56 9 1234 5678",
-  "correoPersonal": "ana@example.org",
-  "correoInterno": "aperez.12345678@induztek.ejemplo",
-  "rolCodigo": "TECNICO",
+  "fecha": "2026-11-24T10:30:00",
+  "estado": 400,
+  "error": "Bad Request",
+  "mensaje": "Faltan datos para registrar el protocolo. Revisa los campos marcados.",
+  "ruta": "/protocolos",
+  "campos": {
+    "temperaturaC": "Ingresa la temperatura ambiente",
+    "pruebas[0].instrumentoId": "Selecciona el instrumento"
+  }
+}
+```
+
+`campos` es `null` cuando el error no es de un campo. La app pinta en rojo cada clave de `campos`.
+
+### Contraseñas
+
+La app nunca envía la contraseña en texto plano. Envía `SHA-256(correoDeAcceso en minúsculas + contraseña)` en hexadecimal (64 caracteres), calculado con `Seguridad.cifrarContrasena(correo, contrasena)`. El servidor vuelve a cifrarla con una sal aleatoria.
+
+Ejemplo: `respinoza@induztek.ejemplo` + `Induztek#2026` → `09b1ce95bef87d014de1194ea6ab9e2fa3da38fbe73aaf378b5377c34cd32638`.
+
+### Límite de intentos
+
+| Acción | Máximo cada 15 minutos (por correo) |
+|---|---|
+| Login | 10 (se reinicia al entrar bien) |
+| Registro | 5 |
+| Pedir código | 5 |
+| Verificar o usar código | 10 |
+| Pregunta de seguridad | 10 |
+
+Al superar el máximo responde **429** con `"mensaje": "Demasiados intentos. Espera 15 minutos antes de volver a intentarlo."`.
+
+### Cuentas de prueba
+
+Todas usan la contraseña `Induztek#2026`.
+
+| Perfil | Correo |
+|---|---|
+| Jefe técnico | `respinoza@induztek.ejemplo` |
+| Ingeniero | `acontreras@induztek.ejemplo`, `smorales@induztek.ejemplo` |
+| Técnico | `mgodoy@induztek.ejemplo`, `jtapia@induztek.ejemplo`, `crdon@induztek.ejemplo`, `dvalenzuela@induztek.ejemplo` |
+| Cliente | `jarancibia@svcentral.ejemplo`, `pnavarro@cerroalto.ejemplo`, `cmendez@losaromos.ejemplo` |
+
+---
+
+## 1. Usuarios (ms-usuarios)
+
+Perfiles (`rol`): `TECNICO`, `INGENIERO`, `JEFE_TECNICO`, `CLIENTE`, `SIN_ASIGNAR`.
+
+### Objeto usuario
+
+```json
+{
+  "id": 7,
+  "rolCodigo": "JEFE_TECNICO",
+  "rolNombre": "Jefe técnico",
+  "rut": "13.871.905-7",
+  "nombre": "Ricardo Espinoza Lagos",
+  "correo": "respinoza@induztek.ejemplo",
+  "correoPersonal": "respinoza@induztek.ejemplo",
+  "telefono": "+56 9 9345 1187",
   "activo": true,
-  "credencialesConfiguradas": false,
-  "creadoEn": "2026-11-23T13:00:00Z"
+  "tieneContrasena": true,
+  "giro": null,
+  "contactoNombre": null,
+  "contactoCargo": null
 }
 ```
 
-`credencialesConfiguradas=false` indica que aún falta establecer la contraseña. La lista usa `{ "contenido": [...], "pagina": 0, "tamano": 20, "totalElementos": 1, "totalPaginas": 1 }`. `pagina >= 0`, `tamano` entre 1 y 100, orden ascendente por ID.
+- `correo`: correo de acceso, lo genera el servidor (inicial del nombre + primer apellido).
+- `correoPersonal`: adonde llegan los códigos.
+- `tieneContrasena`: `false` mientras la cuenta no se active.
 
-## Primera contraseña y recuperación
+### POST `/usuarios/login`
 
-1. Con la cuenta habilitada, enviar correo **interno**, pregunta y respuesta:
-
-```http
-POST /api/v1/auth/recuperacion/solicitar
-Content-Type: application/json
-
-{
-  "correo": "aperez.12345678@induztek.ejemplo",
-  "preguntaSeguridad": "¿Cuál es el nombre de tu primera mascota?",
-  "respuestaSeguridad": "luna"
-}
+```json
+{ "correo": "respinoza@induztek.ejemplo", "contrasena": "09b1ce95bef87d014de1194ea6ab9e2fa3da38fbe73aaf378b5377c34cd32638" }
 ```
 
-Respuesta `202`: `{"mensaje":"Si los datos coinciden con una cuenta habilitada, recibirás un código en tu correo personal"}`. El código se envía exclusivamente al correo personal almacenado; no se recibe un destinatario alternativo ni se devuelve el código en HTTP. Los datos que no coinciden, cuentas pendientes y desactivadas reciben el mismo mensaje sin enviar correo.
+- 200: objeto usuario.
+- 401: datos incorrectos, o cuenta aún sin contraseña.
+- 403: cuenta desactivada o sin perfil.
+- 429: demasiados intentos.
 
-2. El titular lee el código y establece contraseña:
+### POST `/usuarios/registro`
 
-```http
-POST /api/v1/auth/recuperacion/restablecer
-Content-Type: application/json
-
-{
-  "correo": "aperez.12345678@induztek.ejemplo",
-  "codigo": "12345678",
-  "nuevaContrasena": "Una clave nueva segura",
-  "confirmacion": "Una clave nueva segura"
-}
-```
-
-Respuesta `204`, sin cuerpo. Código de ocho dígitos, diez minutos de vigencia, cinco errores permitidos, un solo uso. Reenvío después de sesenta segundos; el código anterior queda invalidado. Los contadores de intentos se guardan aunque la respuesta sea error. La cuenta debe conservar rol y estar activa. Después de cambiar la clave se requiere nuevo login; todas las sesiones previas se revocan.
-
-## Login, perfil y logout
-
-```http
-POST /api/v1/auth/login
-Content-Type: application/json
-
-{"correo":"aperez.12345678@induztek.ejemplo","contrasena":"Una clave nueva segura"}
-```
-
-Respuesta `200`:
+No lleva contraseña: la cuenta queda pendiente hasta que el Jefe asigne un perfil.
 
 ```json
 {
-  "accessToken": "TOKEN_OPACO_DE_43_CARACTERES",
-  "tokenType": "Bearer",
-  "expiresIn": 43200,
-  "usuario": { "id": 42, "rolCodigo": "TECNICO" }
+  "nombre": "Valentina Muñoz Pérez",
+  "rut": "11.111.111-1",
+  "correoPersonal": "vale.munoz@gmail.com",
+  "telefono": "+56 9 5555 6666",
+  "preguntaSeguridad": "¿Cuál es tu comida favorita?",
+  "respuestaSeguridad": "sushi"
 }
 ```
 
-En este ejemplo se abrevia `usuario`; la respuesta real incluye todos los campos del usuario público. No hay refresh token. Al caducar a las doce horas, repetir login. Para `GET /usuarios/me`, `POST /auth/logout` y otras rutas privadas: `Authorization: Bearer <accessToken>`. Logout devuelve `204` y revoca esa sesión.
-
-## Errores
+201:
 
 ```json
 {
-  "codigo": "VALIDACION",
-  "mensaje": "Revisa los campos enviados",
-  "errores": { "rut": "RUT inválido, revisa el dígito verificador" },
-  "timestamp": "2026-11-23T13:00:00Z"
+  "id": 12,
+  "correoInterno": "vmunoz@induztek.ejemplo",
+  "estado": "PENDIENTE_ASIGNACION_ROL",
+  "mensaje": "Tu cuenta quedó pendiente. Cuando el Jefe técnico te asigne un perfil, recibirás en vale.munoz@gmail.com un código para crear tu contraseña."
 }
 ```
 
-`errores` puede estar vacío. No interpretar el texto del mensaje como código. Códigos de negocio: `VALIDACION`, `SOLICITUD_INVALIDA`, `USUARIO_DUPLICADO`, `CREDENCIALES_INVALIDAS`, `CUENTA_NO_HABILITADA`, `CODIGO_INVALIDO`, `DEMASIADOS_INTENTOS`, `CORREO_NO_DISPONIBLE`, `TOKEN_INVALIDO`, `AUTENTICACION_REQUERIDA`, `ACCESO_DENEGADO`, `USUARIO_NO_ENCONTRADO`, `ULTIMO_ADMINISTRADOR`, `ROL_REQUERIDO`, `SERVICIO_NO_DISPONIBLE`, `ERROR_INTERNO`.
+- Si el correo generado ya existe, se agrega un número: `vmunoz2@induztek.ejemplo`.
+- 400 si hay campos inválidos. El teléfono debe llegar como `+56 9 XXXX XXXX`.
+- 409 si el RUT o el correo personal ya están registrados.
 
-## Handoff para el chat Android
+### GET `/usuarios/preguntas`
 
-Implementar un adaptador HTTP de `RegistroUsuarioRepository` y sustituir `RegistroUsuarioNoDisponibleRepository` en `AppViewModelFactory`. En `201`, deserializar `correoInterno` y devolver `ResultadoRegistroUsuario.Creado`; el ViewModel ya presenta la confirmación y limpia los datos. El resultado actual solo distingue `Creado` y `NoDisponible`: ampliar su modelo para mostrar errores de campo `400` y duplicados `409`. No reemplazar todos los fallos con el mensaje «registro todavía no disponible».
+200:
 
-Login y recuperación siguen usando `UsuarioRepository` local. Sustituir la comparación SQL de contraseña y el cambio local por los endpoints anteriores; agregar el paso del código enviado al correo. La validación Android actual permite seis caracteres; actualizarla al mínimo de doce del servidor y comunicar ese requisito. El modelo Android `Usuario` exige `passwordHash`: crear un DTO público que no lo requiera; `correoInterno` puede mapearse al campo visual `correo`. Los roles se deben leer del servidor y agregar `ADMIN` al catálogo y navegación correspondiente. Las restricciones reales de autorización permanecen en backend.
+```json
+["¿Cuál es el nombre de tu primera mascota?", "¿En qué ciudad nacieron tus padres?", "¿Cuál es tu comida favorita?", "¿Cuál fue el modelo de tu primer auto?", "¿Cuál es el nombre de tu mejor amigo de la infancia?"]
+```
 
-Guardar el token mediante almacenamiento protegido de Android, omitirlo en logs y usar un interceptor HTTP para las rutas privadas. Tratar `401` como sesión inválida, `403` como acceso denegado, `429` como límite temporal y `5xx` o desconexión como indisponibilidad. No considerar un usuario SQLite como prueba de autenticación remota. Mantener los datos locales de terreno como caché separada de la identidad del servidor.
+### GET `/usuarios?rol=SIN_ASIGNAR&activo=true&buscar=godoy`
+
+- Los tres filtros son opcionales.
+- `buscar` busca en el nombre, el RUT, el correo y el correo personal.
+- 200: lista de usuarios. 204: sin resultados.
+
+### GET `/usuarios/{id}`
+
+200 usuario / 404.
+
+### POST `/usuarios` (el Jefe crea una cuenta)
+
+```json
+{
+  "rol": "INGENIERO",
+  "nombre": "Pedro Rojas Vera",
+  "rut": "15.906.334-8",
+  "correoPersonal": "pedro.rojas@gmail.com",
+  "telefono": "+56 9 1111 2222",
+  "giro": null,
+  "contactoNombre": null,
+  "contactoCargo": null,
+  "preguntaSeguridad": "¿Cuál es tu comida favorita?",
+  "respuestaSeguridad": "porotos"
+}
+```
+
+- 201: devuelve el usuario con `"correo": "projas@induztek.ejemplo"` y `"tieneContrasena": false`. Además se envía un código de activación al correo personal.
+- 400 si `rol` es `SIN_ASIGNAR`. 409 si hay duplicado.
+
+### PUT `/usuarios/{id}`
+
+```json
+{ "nombre": "Matías Godoy Herrera", "rut": "17.284.519-3", "telefono": "+56 9 8123 4567", "giro": null, "contactoNombre": null, "contactoCargo": null }
+```
+
+200 usuario.
+
+### PATCH `/usuarios/{id}/rol`
+
+```json
+{ "rol": "TECNICO" }
+```
+
+200 usuario. Si la cuenta estaba en `SIN_ASIGNAR` y no tiene contraseña, se envía el código de activación (vence en 24 horas) al correo personal.
+
+### PATCH `/usuarios/{id}/activo`
+
+```json
+{ "activo": false }
+```
+
+200 usuario.
+
+### PUT `/usuarios/{id}/contrasena`
+
+`actual` y `nueva` van cifradas, igual que en el login.
+
+```json
+{ "actual": "<hash actual>", "nueva": "<hash nuevo>" }
+```
+
+204. 401 si la actual no coincide. 400 si la nueva es igual a la actual.
+
+## 2. Recuperar o activar la cuenta
+
+En `correo` se puede enviar el correo de acceso o el personal. La `nuevaContrasena` se cifra **con el correo de acceso**.
+
+### Por pregunta de seguridad
+
+**POST `/usuarios/recuperacion/pregunta/verificar`**
+
+```json
+{ "correo": "mgodoy@induztek.ejemplo", "pregunta": "¿Cuál es el nombre de tu primera mascota?", "respuesta": "firulais" }
+```
+
+204 si coincide. 400 con un mensaje genérico si no.
+
+**POST `/usuarios/recuperacion/pregunta`**
+
+Los mismos campos más la contraseña nueva:
+
+```json
+{ "correo": "mgodoy@induztek.ejemplo", "pregunta": "¿Cuál es el nombre de tu primera mascota?", "respuesta": "firulais", "nuevaContrasena": "<hash>" }
+```
+
+204.
+
+### Por código al correo personal
+
+**POST `/usuarios/recuperacion/codigo`**
+
+```json
+{ "correo": "mgodoy@induztek.ejemplo" }
+```
+
+202:
+
+```json
+{ "mensaje": "Si el correo pertenece a una cuenta activa, enviamos un código a su correo personal que vence en 10 minutos." }
+```
+
+- La respuesta es siempre la misma, exista o no la cuenta.
+- No se envía otro código si el anterior se pidió hace menos de 1 minuto.
+
+**POST `/usuarios/recuperacion/codigo/verificar`**
+
+```json
+{ "correo": "mgodoy@induztek.ejemplo", "codigo": "482913" }
+```
+
+204 / 400.
+
+**POST `/usuarios/recuperacion/codigo/restablecer`**
+
+```json
+{ "correo": "mgodoy@induztek.ejemplo", "codigo": "482913", "nuevaContrasena": "<hash>" }
+```
+
+204.
+
+- El código queda usado.
+- Tras 5 códigos incorrectos hay que pedir uno nuevo.
+- Este mismo endpoint activa una cuenta nueva con el código de activación.
+
+## 3. Instalaciones y equipos (ms-instalaciones)
+
+| Método | Ruta | Respuesta |
+|---|---|---|
+| GET | `/regiones` | `[{ "id": 1, "nombre": "Región Metropolitana" }]` |
+| GET | `/regiones/{id}/comunas` | `[{ "id": 1, "nombre": "Santiago", "regionId": 1, "regionNombre": "Región Metropolitana" }]` |
+| GET | `/comunas?regionId=1` | igual que la anterior |
+| GET | `/tipos-equipo` | `[{ "id": 1, "nombre": "Transformador", "clasificacion": "PRIMARIO" }]` |
+| GET | `/tipos-equipo/{id}` | un tipo |
+| GET | `/instalaciones?clienteId=8` | lista de instalaciones |
+| GET | `/instalaciones/{id}` | una instalación |
+| GET | `/instalaciones/{id}/equipos` | equipos de la instalación |
+| POST | `/instalaciones` | 201 |
+| PUT | `/instalaciones/{id}` | 200 |
+| GET | `/equipos?instalacionId=&clienteId=&tipoEquipoId=` | lista de equipos |
+| GET | `/equipos/{id}` | un equipo |
+| POST | `/equipos` | 201 (409 si el TAG se repite en la instalación) |
+| PUT | `/equipos/{id}` | 200 |
+
+**Instalación (request):**
+
+```json
+{ "clienteId": 8, "nombre": "Planta Norte", "ubicacion": "Av. Industrial 1200", "comunaId": 1, "observacionesAcceso": "Portería 2" }
+```
+
+La respuesta agrega `id`, `clienteNombre`, `comunaNombre` y `regionNombre`. El `clienteId` debe ser un usuario `CLIENTE` activo (si no, 400).
+
+**Equipo (request):**
+
+```json
+{
+  "instalacionId": 1, "tag": "TR-01", "tipoEquipoId": 1,
+  "marca": "ABB", "modelo": "RESIBLOC", "numeroSerie": "AB-2231", "anio": 2018,
+  "observaciones": null,
+  "potenciaKva": 1500.0, "tensionKv": 12.0, "corrienteA": 72.2, "maxContactosUohm": 50.0
+}
+```
+
+La respuesta agrega `id`, `instalacionNombre`, `clienteId`, `tipoEquipoNombre` y `clasificacion`. El TAG se guarda en mayúsculas.
+
+## 4. Instrumentos (ms-instrumentos)
+
+| Método | Ruta | Respuesta |
+|---|---|---|
+| GET | `/instrumentos?estado=VIGENTE` | lista ordenada |
+| GET | `/instrumentos/{id}` | un instrumento |
+| POST | `/instrumentos` | 201 (409 si el número de serie se repite) |
+| PUT | `/instrumentos/{id}` | 200 |
+| GET | `/instrumentos/{id}/calibraciones` | historial de calibraciones |
+| POST | `/instrumentos/{id}/calibraciones` | 201 |
+| GET | `/instrumentos/{id}/vigencia?fecha=2026-11-24` | `{ "instrumentoId": 1, "fecha": "2026-11-24", "vigente": true, "fechaVencimiento": "2027-03-01" }` |
+
+Los valores de `estado` son `VIGENTE`, `POR_VENCER` (30 días o menos), `VENCIDA` y `SIN_CALIBRACION`.
+
+**Instrumento (request):**
+
+```json
+{ "nombreTipo": "Megóhmetro 5 kV", "marca": "Megger", "modelo": "MIT525", "numeroSerie": "MIT-0045821" }
+```
+
+**Instrumento (response):**
+
+```json
+{
+  "id": 1, "nombreTipo": "Megóhmetro 5 kV", "marca": "Megger", "modelo": "MIT525", "numeroSerie": "MIT-0045821",
+  "fechaCalibracion": "2026-03-01", "fechaVencimiento": "2027-03-01", "diasRestantes": 97,
+  "estado": "VIGENTE", "estadoEtiqueta": "Vigente"
+}
+```
+
+**Calibración (request):**
+
+```json
+{ "fechaCalibracion": "2026-11-20", "fechaVencimiento": "2027-11-20", "certificado": "CERT-2026-118" }
+```
+
+## 5. Visitas, protocolos y evidencias (ms-protocolo)
+
+Quien hace la acción va como `usuarioId`: en el cuerpo o en la URL (`?usuarioId=`). El servidor revisa su perfil en ms-usuarios.
+
+### Visitas
+
+| Método | Ruta | Respuesta |
+|---|---|---|
+| GET | `/visitas?usuarioId=1&abiertas=true` | visitas del usuario (el Jefe ve todas, el cliente las suyas) |
+| GET | `/visitas/{id}` | una visita |
+| POST | `/visitas` | 201. Solo INGENIERO o JEFE_TECNICO |
+| GET | `/visitas/{id}/equipos-disponibles?protocoloId=` | equipos sin protocolo en esa visita |
+| POST | `/visitas/{id}/recepcion` | registra quién recibe y cierra la visita |
+| GET | `/visitas/{id}/acta?usuarioId=1` | acta con visita, recepción y protocolos |
+
+**Visita (request):**
+
+```json
+{
+  "usuarioId": 5, "numeroOt": "OT-2026-0150", "instalacionId": 1, "fecha": "2026-11-25",
+  "tipoVisita": "PRUEBAS_Y_MANT", "ingenieroCargoId": 5, "participantes": [1, 2]
+}
+```
+
+`tipoVisita` puede ser `SOLO_PRUEBAS` o `PRUEBAS_Y_MANT`.
+
+**Visita (response):**
+
+```json
+{
+  "id": 3, "numeroOt": "OT-2026-0150", "instalacionId": 1, "instalacionNombre": "Planta Norte",
+  "clienteId": 8, "clienteNombre": "Sanitaria Valle Central S.A.", "fecha": "2026-11-25",
+  "tipoVisita": "PRUEBAS_Y_MANT", "tipoVisitaEtiqueta": "Pruebas y mantenimiento",
+  "ingenieroCargoId": 5, "ingenieroNombre": "Andrea Contreras Silva",
+  "participantes": [{ "id": 1, "nombre": "Matías Godoy Herrera" }],
+  "cerrada": false, "fechaHoraCierre": null, "totalProtocolos": 0, "protocolosRegistrados": 0
+}
+```
+
+**Recepción (request):**
+
+```json
+{ "receptorNombre": "Juan Arancibia", "receptorRut": "12.345.678-5", "receptorCargo": "Jefe de planta" }
+```
+
+### Catálogo de pruebas
+
+**GET `/tipos-prueba?tipoEquipoId=1`**
+
+```json
+[{ "id": 1, "codigo": "AISLACION", "nombre": "Resistencia de aislación", "parametros": [{ "id": 1, "codigo": "LECTURA_1MIN", "nombre": "Lectura a 1 min", "unidad": "MΩ" }] }]
+```
+
+### Protocolos
+
+Estados (`estado`): `BORRADOR`, `REGISTRADO_TERRENO`, `OBSERVADO`, `FORMALIZADO`, `ANULADO`.
+
+| Método | Ruta | Respuesta |
+|---|---|---|
+| GET | `/protocolos?estado=&equipoId=&visitaId=&usuarioId=` | lista resumida |
+| GET | `/protocolos/indicadores` | `{ "total": 12, "porEstado": { "FORMALIZADO": 5 }, "promedioDiasFormalizacion": 2.1 }` |
+| GET | `/protocolos/{id}` | detalle completo |
+| POST | `/protocolos` | 201 |
+| PUT | `/protocolos/{id}` | 200. Solo quien lo creó, en Borrador u Observado |
+| PATCH | `/protocolos/{id}/estado` | 200 |
+| GET | `/protocolos/equipo/{equipoId}/historial` | protocolos anteriores del equipo |
+| GET | `/protocolos/equipo/{equipoId}/mediciones-anteriores?antesDe=&excluir=` | últimas mediciones para comparar |
+
+**Protocolo (request).** Con `"registrar": false` se guarda como Borrador sin validar todo. Con `"registrar": true` se valida completo y pasa a `REGISTRADO_TERRENO`; si falta algo, responde 400 con `campos`.
+
+```json
+{
+  "usuarioId": 1, "visitaId": 3, "equipoId": 1,
+  "temperaturaC": 18.5, "humedadPct": 55.0,
+  "descripcionMantenimiento": "Limpieza de aisladores", "observaciones": null,
+  "registrar": true,
+  "pruebas": [{
+    "tipoPruebaId": 1, "elemento": "Fase H1-X1", "momento": "UNICA",
+    "realizada": true, "motivoNoRealizada": null,
+    "instrumentoId": 1, "resultado": "APROBADO", "comentario": null,
+    "ingresadoManualmente": false,
+    "mediciones": [{ "parametroId": 1, "valor": 2500.0 }]
+  }]
+}
+```
+
+- `resultado` puede ser `APROBADO`, `OBSERVADO` o `RECHAZADO`.
+- El instrumento debe estar vigente en la fecha de la prueba.
+- `descripcionMantenimiento` es obligatoria en visitas `PRUEBAS_Y_MANT`.
+
+**Detalle (response).** Además de los datos del request, trae:
+
+- `id` (ej. `PT-2026-0001`), `numero`, `numeroOt`, `tipoVisita`, `equipoTag`, `tipoEquipoNombre`, `instalacionNombre`, `clienteNombre`;
+- `usuarioRegistraId`, `usuarioRegistraNombre`, `fechaHoraPrueba`, `estado`, `estadoEtiqueta`, `protocoloReemplazadoId`;
+- `pruebas` (cada medición con `parametroCodigo`, `parametroNombre` y `unidad`);
+- `historial`: `[{ "estadoAnterior": "BORRADOR", "estadoNuevo": "REGISTRADO_TERRENO", "usuarioId": 1, "usuarioNombre": "Matías Godoy Herrera", "fechaHora": "...", "motivo": null }]`;
+- `evidencias`.
+
+**Cambiar estado (botón Formalizar del Ingeniero o Jefe):**
+
+```json
+{ "usuarioId": 5, "estado": "FORMALIZADO", "motivo": null }
+```
+
+- `FORMALIZADO` y `OBSERVADO` solo se aplican desde `REGISTRADO_TERRENO`.
+- `ANULADO` se aplica desde cualquier estado menos Formalizado o Anulado.
+- `OBSERVADO` y `ANULADO` exigen `motivo` (400 con `campos.motivo`).
+- 403 si el usuario no es INGENIERO ni JEFE_TECNICO.
+
+### Evidencias (fotos)
+
+| Método | Ruta | Respuesta |
+|---|---|---|
+| POST | `/protocolos/{id}/evidencias` (multipart) | 201 |
+| GET | `/protocolos/{id}/evidencias` | lista |
+| GET | `/evidencias/{id}/archivo` | la imagen |
+| DELETE | `/evidencias/{id}?usuarioId=1` | 204 |
+
+Reglas: JPG, PNG o WEBP de hasta 5 MB, con un máximo de 10 fotos por protocolo.
+
+Partes del multipart: `archivo` (la imagen), `usuarioId` y `descripcion` (opcional).
+
+```kotlin
+@Multipart
+@POST("protocolos/{id}/evidencias")
+suspend fun subirEvidencia(
+    @Path("id") id: String,
+    @Part archivo: MultipartBody.Part,
+    @Part("usuarioId") usuarioId: RequestBody,
+    @Part("descripcion") descripcion: RequestBody?
+): EvidenciaDto
+```
+
+**Evidencia (response):**
+
+```json
+{ "id": 4, "nombreOriginal": "foto1.jpg", "tipoContenido": "image/jpeg", "tamano": 183422, "descripcion": "Placa", "usuarioId": 1, "fechaHora": "2026-11-24T10:41:00", "url": "/evidencias/4/archivo" }
+```
