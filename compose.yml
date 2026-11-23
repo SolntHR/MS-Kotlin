@@ -1,0 +1,67 @@
+name: induztek-backend
+services:
+  usuarios-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: usuarios
+      POSTGRES_USER: ${DB_USER:-usuarios}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Configura DB_PASSWORD en .env}
+    volumes:
+      - usuarios-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d usuarios"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+  mailpit:
+    image: axllent/mailpit:v1.27.8
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+  eureka-server:
+    build:
+      context: .
+      args:
+        MODULE: eureka-server
+    ports:
+      - "127.0.0.1:8761:8761"
+  ms-usuarios:
+    build:
+      context: .
+      args:
+        MODULE: ms-usuarios
+    depends_on:
+      usuarios-db:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+      eureka-server:
+        condition: service_started
+    environment:
+      DB_URL: jdbc:postgresql://usuarios-db:5432/usuarios
+      DB_USER: ${DB_USER:-usuarios}
+      DB_PASSWORD: ${DB_PASSWORD:?Configura DB_PASSWORD}
+      RECOVERY_CODE_SECRET: ${RECOVERY_CODE_SECRET:?Configura un secreto de al menos 32 bytes}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?Configura ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Configura ADMIN_PASSWORD}
+      ADMIN_SECURITY_ANSWER: ${ADMIN_SECURITY_ANSWER:?Configura ADMIN_SECURITY_ANSWER}
+      INTERNAL_EMAIL_DOMAIN: ${INTERNAL_EMAIL_DOMAIN:-induztek.ejemplo}
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      SMTP_FROM: ${SMTP_FROM:-no-reply@induztek.ejemplo}
+      EUREKA_ENABLED: "true"
+      EUREKA_URL: http://eureka-server:8761/eureka/
+  api-gateway:
+    build:
+      context: .
+      args:
+        MODULE: api-gateway
+    depends_on:
+      - eureka-server
+      - ms-usuarios
+    environment:
+      EUREKA_URL: http://eureka-server:8761/eureka/
+    ports:
+      - "8080:8080"
+volumes:
+  usuarios-data:

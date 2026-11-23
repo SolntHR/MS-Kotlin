@@ -1,0 +1,58 @@
+server:
+  port: ${SERVER_PORT:8081}
+  error:
+    include-message: never
+    include-stacktrace: never
+  max-http-request-header-size: 16KB
+spring:
+  application:
+    name: ms-usuarios
+  datasource:
+    url: ${DB_URL:jdbc:h2:file:./data/usuarios;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE}
+    username: ${DB_USER:sa}
+    password: ${DB_PASSWORD:}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+      fail-on-null-for-primitives: true
+      fail-on-missing-creator-properties: true
+      fail-on-numbers-for-enums: true
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:1025}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${SMTP_AUTH:false}
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS:false}
+      mail.smtp.starttls.required: ${SMTP_STARTTLS:false}
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
+eureka:
+  instance:
+    prefer-ip-address: true
+  client:
+    enabled: ${EUREKA_ENABLED:false}
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+app:
+  internal-domain: ${INTERNAL_EMAIL_DOMAIN:induztek.ejemplo}
+  code-secret: ${RECOVERY_CODE_SECRET}
+  mail-from: ${SMTP_FROM:no-reply@induztek.ejemplo}
+  bootstrap:
+    email: ${ADMIN_EMAIL:}
+    password: ${ADMIN_PASSWORD:}
+    answer: ${ADMIN_SECURITY_ANSWER:}
