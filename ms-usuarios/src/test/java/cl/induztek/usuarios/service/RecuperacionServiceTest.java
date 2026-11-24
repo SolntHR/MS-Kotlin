@@ -81,13 +81,11 @@ class RecuperacionServiceTest {
     }
 
     @Test
-    void tambienSePuedeRecuperarConElCorreoPersonal() {
+    void soloSeRecuperaConElCorreoDeAcceso() {
         when(usuarioRepository.findByCorreoIgnoreCase(PERSONAL)).thenReturn(Optional.empty());
-        when(usuarioRepository.findByCorreoPersonalIgnoreCase(PERSONAL)).thenReturn(Optional.of(matias));
 
-        recuperacionService.restablecerConPregunta(PERSONAL, PREGUNTA, "firulais", "nueva123");
-
-        assertThat(hashService.coincide("nueva123", matias.getPasswordSal(), matias.getPasswordHash())).isTrue();
+        assertThatThrownBy(() -> recuperacionService.restablecerConPregunta(PERSONAL, PREGUNTA, "firulais", "nueva123"))
+                .isInstanceOf(SolicitudInvalidaException.class);
     }
 
     @Test
@@ -166,7 +164,6 @@ class RecuperacionServiceTest {
     @Test
     void solicitarCodigoParaCorreoDesconocidoOCuentaPendienteNoEnviaNada() {
         when(usuarioRepository.findByCorreoIgnoreCase("nadie@induztek.ejemplo")).thenReturn(Optional.empty());
-        when(usuarioRepository.findByCorreoPersonalIgnoreCase("nadie@induztek.ejemplo")).thenReturn(Optional.empty());
         when(usuarioRepository.findByCorreoIgnoreCase(CORREO)).thenReturn(Optional.of(matias));
         matias.setRol(Rol.SIN_ASIGNAR);
 

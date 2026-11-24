@@ -73,8 +73,7 @@ public class RecuperacionService {
 
     private Optional<Usuario> buscarCuenta(String correo) {
         String limpio = correo.trim();
-        return usuarioRepository.findByCorreoIgnoreCase(limpio)
-                .or(() -> usuarioRepository.findByCorreoPersonalIgnoreCase(limpio));
+        return usuarioRepository.findByCorreoIgnoreCase(limpio);
     }
 
     private boolean habilitada(Usuario usuario) {
