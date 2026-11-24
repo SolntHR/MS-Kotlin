@@ -28,7 +28,7 @@ public class CorreoService {
                 + "El código vence en 10 minutos. Si no lo pediste, ignora este correo.";
         boolean enviado = enviar(destino, "Código para restablecer tu contraseña", texto);
         if (!enviado) {
-            log.warn("Correo no enviado a {}. Código de recuperación para pruebas: {}", destino, codigo);
+            log.warn("Correo de recuperación no enviado a {}.", destino);
         }
         return enviado;
     }
@@ -41,7 +41,7 @@ public class CorreoService {
                 + "En la app elige \"Recuperar contraseña\" > \"Por correo\" e ingresa este código. Vence en 24 horas.";
         boolean enviado = enviar(destino, "Activa tu cuenta de Induztek Protocolos", texto);
         if (!enviado) {
-            log.warn("Correo no enviado a {}. Código de activación para pruebas: {}", destino, codigo);
+            log.warn("Correo de activación no enviado a {}.", destino);
         }
         return enviado;
     }
