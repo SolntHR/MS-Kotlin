@@ -38,10 +38,8 @@ public record CrearUsuarioRequest(
         @Size(max = 100, message = "El cargo no puede superar los 100 caracteres")
         String contactoCargo,
 
-        @NotBlank(message = "Elige una pregunta de seguridad")
         String preguntaSeguridad,
 
-        @NotBlank(message = "Escribe la respuesta de seguridad")
         @Size(max = 100, message = "La respuesta no puede superar los 100 caracteres")
         String respuestaSeguridad) {
 }

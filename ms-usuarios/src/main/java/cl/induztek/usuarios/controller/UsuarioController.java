@@ -83,9 +83,9 @@ public class UsuarioController {
     }
 
     @PatchMapping("/{id}/rol")
-    @Operation(summary = "Asigna o cambia el perfil; si la cuenta estaba pendiente, envía el código de activación")
+    @Operation(summary = "Asigna o cambia el perfil con la contraseña del jefe técnico; si la cuenta estaba pendiente, envía el código de activación")
     public UsuarioResponse cambiarRol(@PathVariable Long id, @Valid @RequestBody CambiarRolRequest request) {
-        return usuarioService.cambiarRol(id, request.rol());
+        return usuarioService.cambiarRol(id, request.rol(), request.jefeId(), request.contrasena());
     }
 
     @PatchMapping("/{id}/activo")

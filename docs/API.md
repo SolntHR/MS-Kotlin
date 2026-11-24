@@ -201,10 +201,16 @@ No lleva contraseña: la cuenta queda pendiente hasta que el Jefe asigne un perf
 ### PATCH `/usuarios/{id}/rol`
 
 ```json
-{ "rol": "TECNICO" }
+{ "rol": "INGENIERO", "jefeId": 7, "contrasena": "<hash de la contraseña del jefe>" }
 ```
 
-200 usuario. Si la cuenta estaba en `SIN_ASIGNAR` y no tiene contraseña, se envía el código de activación (vence en 24 horas) al correo personal.
+200 usuario. Solo el **jefe técnico** activo, confirmando con su contraseña (cifrada igual que en el login), puede asignar o cambiar perfiles (TECNICO, INGENIERO, JEFE_TECNICO).
+
+- 401 "La contraseña no es correcta".
+- 403 si `jefeId` no es un jefe técnico activo.
+- 400 si intenta cambiar su propio perfil, si el perfil es SIN_ASIGNAR o si intenta pasar personal a cliente o al revés (una cuenta pendiente sí puede quedar como CLIENTE).
+
+Si la cuenta estaba en `SIN_ASIGNAR` y no tiene contraseña, se envía el código de activación (vence en 24 horas) al correo personal.
 
 ### PATCH `/usuarios/{id}/activo`
 
@@ -249,6 +255,8 @@ Los mismos campos más la contraseña nueva:
 204.
 
 ### Por código al correo personal
+
+En los dos métodos `correo` es el **correo de acceso** (el del login), porque la contraseña nueva llega cifrada con ese correo. El código se envía al **correo personal** de la cuenta.
 
 **POST `/usuarios/recuperacion/codigo`**
 

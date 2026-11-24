@@ -162,14 +162,17 @@ class UsuarioControllerTest {
     @Test
     void actualizarCambiarRolEstadoYContrasena() throws Exception {
         when(usuarioService.actualizar(eq(1L), any())).thenReturn(matias);
-        when(usuarioService.cambiarRol(1L, Rol.INGENIERO)).thenReturn(matias);
+        when(usuarioService.cambiarRol(1L, Rol.INGENIERO, 7L, "hash-jefe")).thenReturn(matias);
         when(usuarioService.cambiarActivo(1L, false)).thenReturn(matias);
 
         mockMvc.perform(put("/usuarios/1").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"nombre\":\"Matías Godoy\",\"rut\":\"17284519-3\",\"telefono\":\"+56 9 8123 4567\"}"))
                 .andExpect(status().isOk());
-        mockMvc.perform(patch("/usuarios/1/rol").contentType(MediaType.APPLICATION_JSON).content("{\"rol\":\"INGENIERO\"}"))
+        mockMvc.perform(patch("/usuarios/1/rol").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"rol\":\"INGENIERO\",\"jefeId\":7,\"contrasena\":\"hash-jefe\"}"))
                 .andExpect(status().isOk());
+        mockMvc.perform(patch("/usuarios/1/rol").contentType(MediaType.APPLICATION_JSON).content("{\"rol\":\"INGENIERO\"}"))
+                .andExpect(status().isBadRequest());
         mockMvc.perform(patch("/usuarios/1/activo").contentType(MediaType.APPLICATION_JSON).content("{\"activo\":false}"))
                 .andExpect(status().isOk());
         mockMvc.perform(put("/usuarios/1/contrasena").contentType(MediaType.APPLICATION_JSON)

@@ -115,12 +115,25 @@ public class UsuarioService {
     }
 
     @Transactional
-    public UsuarioResponse cambiarRol(Long id, Rol rol) {
+    public UsuarioResponse cambiarRol(Long id, Rol rol, Long jefeId, String contrasena) {
         if (rol == Rol.SIN_ASIGNAR) {
             throw new SolicitudInvalidaException("Elige un perfil para la cuenta");
         }
+        Usuario jefe = buscarPorId(jefeId);
+        if (jefe.getRol() != Rol.JEFE_TECNICO || !jefe.isActivo()) {
+            throw new AccesoDenegadoException("Solo el jefe técnico puede cambiar perfiles");
+        }
+        if (!jefe.tieneContrasena() || !hashService.coincide(contrasena, jefe.getPasswordSal(), jefe.getPasswordHash())) {
+            throw new CredencialesInvalidasException("La contraseña no es correcta");
+        }
+        if (jefe.getId().equals(id)) {
+            throw new SolicitudInvalidaException("No puedes cambiar tu propio perfil");
+        }
         Usuario usuario = buscarPorId(id);
         boolean estabaPendiente = usuario.getRol() == Rol.SIN_ASIGNAR;
+        if (usuario.getRol() == Rol.CLIENTE || (rol == Rol.CLIENTE && !estabaPendiente)) {
+            throw new SolicitudInvalidaException("El personal y los clientes no pueden intercambiar perfiles");
+        }
         usuario.setRol(rol);
         Usuario guardado = usuarioRepository.save(usuario);
         if (estabaPendiente && !guardado.tieneContrasena()) {
@@ -161,8 +174,12 @@ public class UsuarioService {
 
     private Usuario nuevoUsuario(Rol rol, String nombre, String rutIngresado, String correoPersonal, String telefono,
             String pregunta, String respuesta) {
-        if (!PreguntasSeguridad.esValida(pregunta)) {
+        boolean conPregunta = pregunta != null && !pregunta.isBlank();
+        if (conPregunta && !PreguntasSeguridad.esValida(pregunta)) {
             throw new SolicitudInvalidaException("Elige una de las preguntas de seguridad disponibles");
+        }
+        if (conPregunta && (respuesta == null || respuesta.isBlank())) {
+            throw new SolicitudInvalidaException("Escribe la respuesta de seguridad");
         }
         String rut = ValidadorRut.formatear(rutIngresado);
         validarRutLibre(rut, null);
@@ -170,8 +187,7 @@ public class UsuarioService {
             throw new ConflictoException("Ya existe una cuenta con ese correo personal");
         }
         String nombreLimpio = nombre.trim().replaceAll("\\s+", " ");
-        String sal = hashService.generarSal();
-        return Usuario.builder()
+        Usuario usuario = Usuario.builder()
                 .rol(rol)
                 .nombre(nombreLimpio)
                 .rut(rut)
@@ -179,10 +195,18 @@ public class UsuarioService {
                 .correoPersonal(correoPersonal)
                 .telefono(telefono.trim())
                 .activo(true)
-                .preguntaSeguridad(pregunta.trim())
-                .respuestaSal(sal)
-                .respuestaHash(hashService.hash(hashService.normalizarRespuesta(respuesta), sal))
                 .build();
+        if (conPregunta) {
+            asignarRespuesta(usuario, pregunta, respuesta);
+        }
+        return usuario;
+    }
+
+    private void asignarRespuesta(Usuario usuario, String pregunta, String respuesta) {
+        String sal = hashService.generarSal();
+        usuario.setPreguntaSeguridad(pregunta.trim());
+        usuario.setRespuestaSal(sal);
+        usuario.setRespuestaHash(hashService.hash(hashService.normalizarRespuesta(respuesta), sal));
     }
 
     private Usuario buscarPorId(Long id) {

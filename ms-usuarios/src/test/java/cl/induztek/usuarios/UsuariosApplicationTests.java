@@ -76,7 +76,9 @@ class UsuariosApplicationTests {
         assertThatThrownBy(() -> usuarioService.login(new LoginRequest(correoAcceso, contrasena)))
                 .isInstanceOf(CredencialesInvalidasException.class);
 
-        usuarioService.cambiarRol(registro.id(), Rol.TECNICO);
+        Long jefeId = usuarioRepository.findByCorreoIgnoreCase("respinoza@induztek.ejemplo").orElseThrow().getId();
+        usuarioService.cambiarRol(registro.id(), Rol.TECNICO, jefeId,
+                hashService.hashCliente("respinoza@induztek.ejemplo", "Induztek#2026"));
 
         ArgumentCaptor<String> codigo = ArgumentCaptor.forClass(String.class);
         verify(correoService).enviarCodigoActivacion(eq("vale.munoz@gmail.com"), anyString(), eq(correoAcceso),

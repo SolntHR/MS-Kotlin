@@ -56,6 +56,8 @@ class UsuarioServiceTest {
 
     private Usuario matias;
 
+    private Usuario ricardo;
+
     @BeforeEach
     void preparar() {
         Clock reloj = Clock.fixed(Instant.parse("2026-11-24T12:00:00Z"), ZoneOffset.UTC);
@@ -65,6 +67,10 @@ class UsuarioServiceTest {
                 .correo("mgodoy@induztek.ejemplo").correoPersonal("matias.godoy@gmail.com")
                 .telefono("+56 9 8123 4567").activo(true).build();
         usuarioService.asignarContrasena(matias, "123456");
+        ricardo = Usuario.builder().id(7L).rol(Rol.JEFE_TECNICO).rut("13.871.905-7").nombre("Ricardo Espinoza Lagos")
+                .correo("respinoza@induztek.ejemplo").correoPersonal("respinoza@induztek.ejemplo")
+                .telefono("+56 9 9345 1187").activo(true).build();
+        usuarioService.asignarContrasena(ricardo, "clave-jefe");
     }
 
     @Test
@@ -215,11 +221,27 @@ class UsuarioServiceTest {
     }
 
     @Test
+    void elJefeCreaUnaCuentaSinPreguntaDeSeguridadPeroNoConRespuestaVacia() {
+        when(usuarioRepository.save(any(Usuario.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        usuarioService.crear(new CrearUsuarioRequest(Rol.CLIENTE, "Minera Sur SpA", "15906334-8", "contacto@minerasur.cl",
+                "+56 9 1111 2222", "Minería", "Luis Vera", "Gerente", null, null));
+
+        ArgumentCaptor<Usuario> guardado = ArgumentCaptor.forClass(Usuario.class);
+        verify(usuarioRepository).save(guardado.capture());
+        assertThat(guardado.getValue().getPreguntaSeguridad()).isNull();
+        assertThat(guardado.getValue().getRespuestaHash()).isNull();
+        assertThatThrownBy(() -> usuarioService.crear(new CrearUsuarioRequest(Rol.TECNICO, "Pedro Rojas", "15906334-8",
+                "p@gmail.com", "+56 9 1111 2222", null, null, null, PREGUNTA, " ")))
+                .isInstanceOf(SolicitudInvalidaException.class).hasMessageContaining("respuesta");
+    }
+
+    @Test
     void elJefeNoPuedeCrearNiAsignarUnaCuentaSinRol() {
         assertThatThrownBy(() -> usuarioService.crear(new CrearUsuarioRequest(Rol.SIN_ASIGNAR, "Pedro Rojas",
                 "15906334-8", "p@gmail.com", "+56 9 1111 2222", null, null, null, PREGUNTA, "x")))
                 .isInstanceOf(SolicitudInvalidaException.class);
-        assertThatThrownBy(() -> usuarioService.cambiarRol(1L, Rol.SIN_ASIGNAR))
+        assertThatThrownBy(() -> usuarioService.cambiarRol(1L, Rol.SIN_ASIGNAR, 7L, "clave-jefe"))
                 .isInstanceOf(SolicitudInvalidaException.class);
         verify(usuarioRepository, never()).save(any());
     }
@@ -259,9 +281,10 @@ class UsuarioServiceTest {
     @Test
     void cambiarRolYEstado() {
         when(usuarioRepository.findById(1L)).thenReturn(Optional.of(matias));
+        when(usuarioRepository.findById(7L)).thenReturn(Optional.of(ricardo));
         when(usuarioRepository.save(any(Usuario.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        assertThat(usuarioService.cambiarRol(1L, Rol.INGENIERO).rolCodigo()).isEqualTo("INGENIERO");
+        assertThat(usuarioService.cambiarRol(1L, Rol.INGENIERO, 7L, "clave-jefe").rolCodigo()).isEqualTo("INGENIERO");
         assertThat(usuarioService.cambiarActivo(1L, false).activo()).isFalse();
         verify(codigoService, never()).enviarActivacion(any());
     }
@@ -272,11 +295,33 @@ class UsuarioServiceTest {
         matias.setPasswordHash(null);
         matias.setPasswordSal(null);
         when(usuarioRepository.findById(1L)).thenReturn(Optional.of(matias));
+        when(usuarioRepository.findById(7L)).thenReturn(Optional.of(ricardo));
         when(usuarioRepository.save(any(Usuario.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        assertThat(usuarioService.cambiarRol(1L, Rol.TECNICO).rolCodigo()).isEqualTo("TECNICO");
+        assertThat(usuarioService.cambiarRol(1L, Rol.TECNICO, 7L, "clave-jefe").rolCodigo()).isEqualTo("TECNICO");
 
         verify(codigoService).enviarActivacion(matias);
+    }
+
+    @Test
+    void cambiarRolExigeLaContrasenaDelJefeTecnico() {
+        Usuario cliente = Usuario.builder().id(8L).rol(Rol.CLIENTE).nombre("Envasadora").activo(true).build();
+        when(usuarioRepository.findById(1L)).thenReturn(Optional.of(matias));
+        when(usuarioRepository.findById(7L)).thenReturn(Optional.of(ricardo));
+        when(usuarioRepository.findById(8L)).thenReturn(Optional.of(cliente));
+
+        assertThatThrownBy(() -> usuarioService.cambiarRol(1L, Rol.INGENIERO, 7L, "otra"))
+                .isInstanceOf(CredencialesInvalidasException.class).hasMessage("La contraseña no es correcta");
+        assertThatThrownBy(() -> usuarioService.cambiarRol(7L, Rol.INGENIERO, 1L, "123456"))
+                .isInstanceOf(AccesoDenegadoException.class);
+        assertThatThrownBy(() -> usuarioService.cambiarRol(7L, Rol.TECNICO, 7L, "clave-jefe"))
+                .isInstanceOf(SolicitudInvalidaException.class).hasMessage("No puedes cambiar tu propio perfil");
+        assertThatThrownBy(() -> usuarioService.cambiarRol(8L, Rol.TECNICO, 7L, "clave-jefe"))
+                .isInstanceOf(SolicitudInvalidaException.class);
+        assertThatThrownBy(() -> usuarioService.cambiarRol(1L, Rol.CLIENTE, 7L, "clave-jefe"))
+                .isInstanceOf(SolicitudInvalidaException.class)
+                .hasMessage("El personal y los clientes no pueden intercambiar perfiles");
+        verify(usuarioRepository, never()).save(any());
     }
 
     @Test
