@@ -121,7 +121,7 @@ public class UsuarioService {
         }
         Usuario jefe = buscarPorId(jefeId);
         if (jefe.getRol() != Rol.JEFE_TECNICO || !jefe.isActivo()) {
-            throw new AccesoDenegadoException("Solo el jefe técnico puede cambiar perfiles");
+            throw new AccesoDenegadoException("Solo un jefe técnico puede cambiar perfiles");
         }
         if (!jefe.tieneContrasena() || !hashService.coincide(contrasena, jefe.getPasswordSal(), jefe.getPasswordHash())) {
             throw new CredencialesInvalidasException("La contraseña no es correcta");
