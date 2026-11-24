@@ -320,6 +320,11 @@ class FlujoProtocoloTest {
         List<ProtocoloResumenResponse> historial = protocoloService.historialEquipo(1L);
         assertThat(historial).extracting(ProtocoloResumenResponse::numero)
                 .containsExactly("PT-2026-0401", "PT-2025-0288", "PT-2024-0312");
+        assertThat(historial.get(1).usuarioRegistraNombre()).isNotBlank();
+        assertThat(historial.get(1).tipoEquipoNombre()).isNotBlank();
+        assertThat(historial.get(1).resultado()).isNotNull();
+        assertThat(historial.get(1).lectura1Min()).isPositive();
+        assertThat(historial.get(1).lectura10Min()).isPositive();
         assertThat(protocoloService.historialEquipo(99L)).isEmpty();
 
         List<MedicionAnteriorResponse> anteriores = protocoloService.medicionesAnteriores(1L,

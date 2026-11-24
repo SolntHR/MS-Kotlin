@@ -137,8 +137,9 @@ class ControladoresTest {
     @Test
     void protocolos() throws Exception {
         when(protocoloService.listar(EstadoProtocolo.BORRADOR, null, 6L, null)).thenReturn(List.of(
-                new ProtocoloResumenResponse("abc", "PT-2026-ABC", 6L, "OT-2026-1215", 1L, "TR-01", "Planta Lampa",
-                        "Envasadora", 1L, LocalDateTime.of(2026, 11, 23, 10, 0), "BORRADOR", "Borrador")));
+                new ProtocoloResumenResponse("abc", "PT-2026-ABC", 6L, "OT-2026-1215", 1L, "TR-01", "Transformador",
+                        "Planta Lampa", "Envasadora", 1L, "Matías Godoy Herrera", LocalDateTime.of(2026, 11, 23, 10, 0),
+                        "BORRADOR", "Borrador", null, null, null, null)));
         when(protocoloService.detalle("abc")).thenReturn(detalle);
         when(protocoloService.crear(any())).thenReturn(detalle);
         when(protocoloService.actualizar(eq("abc"), any())).thenReturn(detalle);

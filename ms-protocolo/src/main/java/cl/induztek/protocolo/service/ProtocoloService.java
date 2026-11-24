@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -88,8 +89,9 @@ public class ProtocoloService {
         }
         Map<Long, EquipoRemoto> equipos = instalacionClient.equipos();
         Map<Long, InstalacionRemota> instalaciones = instalacionClient.instalaciones();
+        Map<Long, String> nombres = usuarioClient.nombres();
         return protocolos.stream().map(protocolo -> resumen(protocolo, equipos.get(protocolo.getEquipoId()),
-                instalaciones.get(protocolo.getVisita().getInstalacionId()))).toList();
+                instalaciones.get(protocolo.getVisita().getInstalacionId()), nombres)).toList();
     }
 
     @Transactional(readOnly = true)
@@ -208,9 +210,10 @@ public class ProtocoloService {
         protocolos.stream().map(Protocolo::getProtocoloReemplazadoId).filter(r -> r != null).forEach(reemplazados::add);
         Map<Long, EquipoRemoto> equipos = instalacionClient.equipos();
         Map<Long, InstalacionRemota> instalaciones = instalacionClient.instalaciones();
+        Map<Long, String> nombres = usuarioClient.nombres();
         return protocolos.stream().filter(protocolo -> !reemplazados.contains(protocolo.getId()))
                 .map(protocolo -> resumen(protocolo, equipos.get(equipoId),
-                        instalaciones.get(protocolo.getVisita().getInstalacionId())))
+                        instalaciones.get(protocolo.getVisita().getInstalacionId()), nombres))
                 .toList();
     }
 
@@ -389,12 +392,25 @@ public class ProtocoloService {
         throw new ConflictoException("No se pudo generar un número de protocolo único");
     }
 
-    private ProtocoloResumenResponse resumen(Protocolo protocolo, EquipoRemoto equipo, InstalacionRemota instalacion) {
+    private ProtocoloResumenResponse resumen(Protocolo protocolo, EquipoRemoto equipo, InstalacionRemota instalacion,
+            Map<Long, String> nombres) {
+        List<Prueba> realizadas = protocolo.getPruebas().stream().filter(Prueba::isRealizada).toList();
+        String resultado = realizadas.stream().map(Prueba::getResultado).filter(r -> r != null)
+                .max(Comparator.naturalOrder()).map(Resultado::name).orElse(null);
         return new ProtocoloResumenResponse(protocolo.getId(), protocolo.getNumero(), protocolo.getVisita().getId(),
                 protocolo.getVisita().getNumeroOt(), protocolo.getEquipoId(), equipo == null ? null : equipo.tag(),
+                equipo == null ? null : equipo.tipoEquipoNombre(),
                 instalacion == null ? null : instalacion.nombre(), instalacion == null ? null : instalacion.clienteNombre(),
-                protocolo.getUsuarioRegistraId(), protocolo.getFechaHoraPrueba(), protocolo.getEstado().name(),
-                protocolo.getEstado().getEtiqueta());
+                protocolo.getUsuarioRegistraId(), nombres.get(protocolo.getUsuarioRegistraId()),
+                protocolo.getFechaHoraPrueba(), protocolo.getEstado().name(), protocolo.getEstado().getEtiqueta(),
+                resultado, lectura(realizadas, "LECTURA_1MIN"), lectura(realizadas, "LECTURA_10MIN"),
+                protocolo.getProtocoloReemplazadoId());
+    }
+
+    private Double lectura(List<Prueba> pruebas, String codigo) {
+        return pruebas.stream().flatMap(prueba -> prueba.getMediciones().stream())
+                .filter(medicion -> codigo.equals(medicion.getParametro().getCodigo()))
+                .map(Medicion::getValor).findFirst().orElse(null);
     }
 
     private String limpiar(String valor) {

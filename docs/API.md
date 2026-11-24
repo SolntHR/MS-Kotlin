@@ -431,6 +431,18 @@ Estados (`estado`): `BORRADOR`, `REGISTRADO_TERRENO`, `OBSERVADO`, `FORMALIZADO`
 | GET | `/protocolos/equipo/{equipoId}/historial` | protocolos anteriores del equipo |
 | GET | `/protocolos/equipo/{equipoId}/mediciones-anteriores?antesDe=&excluir=` | últimas mediciones para comparar |
 
+**Resumen (lista e historial del equipo):**
+
+```json
+{ "id": "PT-2026-0401", "numero": "PT-2026-0401", "visitaId": 1, "numeroOt": "OT-2026-1187", "equipoId": 1,
+  "equipoTag": "TR-01", "tipoEquipoNombre": "Transformador", "instalacionNombre": "Planta Lampa",
+  "clienteNombre": "Envasadora del Pacífico S.A.", "usuarioRegistraId": 1, "usuarioRegistraNombre": "Matías Godoy Herrera",
+  "fechaHoraPrueba": "2026-09-26T10:30:00", "estado": "REGISTRADO_TERRENO", "estadoEtiqueta": "Registrado en terreno",
+  "resultado": "OBSERVADO", "lectura1Min": 6100.0, "lectura10Min": 10980.0, "protocoloReemplazadoId": null }
+```
+
+`resultado` es el peor resultado entre las pruebas realizadas. `lectura1Min` y `lectura10Min` vienen de la prueba de aislación (null si no se hizo).
+
 **Protocolo (request).** Con `"registrar": false` se guarda como Borrador sin validar todo. Con `"registrar": true` se valida completo y pasa a `REGISTRADO_TERRENO`; si falta algo, responde 400 con `campos`.
 
 ```json

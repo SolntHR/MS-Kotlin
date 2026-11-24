@@ -9,10 +9,16 @@ public record ProtocoloResumenResponse(
         String numeroOt,
         Long equipoId,
         String equipoTag,
+        String tipoEquipoNombre,
         String instalacionNombre,
         String clienteNombre,
         Long usuarioRegistraId,
+        String usuarioRegistraNombre,
         LocalDateTime fechaHoraPrueba,
         String estado,
-        String estadoEtiqueta) {
+        String estadoEtiqueta,
+        String resultado,
+        Double lectura1Min,
+        Double lectura10Min,
+        String protocoloReemplazadoId) {
 }
