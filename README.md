@@ -47,7 +47,7 @@ Reporte de cobertura: `target/site/jacoco/index.html` (mínimo exigido: 80 % de 
 
 | Microservicio | Pruebas | Cobertura de líneas |
 |---|---|---|
-| ms-usuarios | 77 | 99 % |
+| ms-usuarios | 78 | 99 % |
 | ms-instalaciones | 32 | 96 % |
 | ms-instrumentos | 16 | 99 % |
-| ms-protocolo | 27 | 96 % |
+| ms-protocolo | 29 | 96 % |

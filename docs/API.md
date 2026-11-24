@@ -186,6 +186,7 @@ No lleva contraseña: la cuenta queda pendiente hasta que el Jefe asigne un perf
 }
 ```
 
+- `preguntaSeguridad` y `respuestaSeguridad` son opcionales: el Jefe puede dejarlas en `null`. Sin pregunta, la persona recupera su cuenta solo por código al correo.
 - 201: devuelve el usuario con `"correo": "projas@induztek.ejemplo"` y `"tieneContrasena": false`. Además se envía un código de activación al correo personal.
 - 400 si `rol` es `SIN_ASIGNAR`. 409 si hay duplicado.
 
@@ -371,6 +372,8 @@ Quien hace la acción va como `usuarioId`: en el cuerpo o en la URL (`?usuarioId
 | GET | `/visitas?usuarioId=1&abiertas=true` | visitas del usuario (el Jefe ve todas, el cliente las suyas) |
 | GET | `/visitas/{id}` | una visita |
 | POST | `/visitas` | 201. Solo INGENIERO o JEFE_TECNICO |
+| PUT | `/visitas/{id}` | 200. Edita una visita no cerrada (programada o en curso). Solo INGENIERO o JEFE_TECNICO. Si ya tiene protocolos, no se puede cambiar la instalación |
+| DELETE | `/visitas/{id}?usuarioId=5` | 204. Elimina una visita programada (fecha futura) y sin protocolos. Solo INGENIERO o JEFE_TECNICO |
 | GET | `/visitas/{id}/equipos-disponibles?protocoloId=` | equipos sin protocolo en esa visita |
 | POST | `/visitas/{id}/recepcion` | registra quién recibe y cierra la visita |
 | GET | `/visitas/{id}/acta?usuarioId=1` | acta con visita, recepción y protocolos |
