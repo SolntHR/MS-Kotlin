@@ -70,10 +70,17 @@ mvnw spring-boot:run
 - **Swagger** de cada microservicio: `http://localhost:<puerto>/swagger-ui.html`.
 - Todos los endpoints con ejemplos de JSON para Retrofit: [`docs/API.md`](docs/API.md).
 ### Conectar la app desde un celular
- 
-1. En VS Code → **Puertos** → **Reenviar un puerto** → `8090`.
-2. Cambiar la visibilidad del puerto a **Public**.
-3. Copiar la URL del túnel en `RetrofitClient.URL_GATEWAY` de la app (terminada en `/`).
+
+La app apunta a un túnel persistente de dev tunnels que publica el puerto 8090:
+
+```
+winget install Microsoft.devtunnel
+devtunnel user login -g
+devtunnel host induztek-eq014
+```
+
+La URL (`https://fjfh1k06-8090.brs.devtunnels.ms/`) es siempre la misma, en cualquier computador, mientras se inicie sesión con la cuenta que creó el túnel.
+
 ## Variables de entorno
  
 Todas son opcionales; los valores por defecto sirven para ejecutar en local.
