@@ -125,6 +125,28 @@ Sus correos personales son ficticios: para probar el envío de correos, crea un 
  
 Si ya existía la base `induztek_usuarios` de una versión anterior, bórrala antes de iniciar ms-usuarios (`DROP DATABASE induztek_usuarios;`), porque la tabla `usuario` cambió.
  
+## Probar en Swagger
+
+La app cifra la contraseña antes de enviarla (SHA-256 del correo en minúsculas seguido de la contraseña), así que en Swagger el campo `contrasena` del login va **ya cifrado**. Valores de `Induztek#2026` para los usuarios de prueba:
+
+| Usuario | Id | `contrasena` en `POST /usuarios/login` |
+|---|---|---|
+| `respinoza@induztek.ejemplo` (jefe técnico) | 7 | `09b1ce95bef87d014de1194ea6ab9e2fa3da38fbe73aaf378b5377c34cd32638` |
+| `acontreras@induztek.ejemplo` (ingeniera) | 5 | `95ba2535cb9228ee79385f211fe8b7be8b6fdfc40694bec361d6b23e388ab75f` |
+| `mgodoy@induztek.ejemplo` (técnico) | 1 | `283b8fc4e7e99238a3c61d9b3b937bc95476e4f0acefad4f038e054b15cdc8a5` |
+| `mfuentes@envpacifico.ejemplo` (cliente) | 8 | `3fd11708ffa28470e6d673ebe95f13623c382b4e6dfe2613b87deba5ffee4c50` |
+
+Ejemplo:
+
+```json
+{
+  "correo": "respinoza@induztek.ejemplo",
+  "contrasena": "09b1ce95bef87d014de1194ea6ab9e2fa3da38fbe73aaf378b5377c34cd32638"
+}
+```
+
+El cambio de perfil usa el mismo valor cifrado en `contrasena` (la del jefe). El resto de los endpoints no requiere sesión: las escrituras llevan el `usuarioId` en el cuerpo o en la consulta.
+
 ## Códigos de respuesta
  
 | Código | Significado |
